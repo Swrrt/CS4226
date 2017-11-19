@@ -60,7 +60,7 @@ def startNetwork():
 	print links
  	global net
 	net = Mininet(topo=topo, link = Link,
-                  controller=lambda name: RemoteController(name, ip='192.168.56.103'),
+                  controller=lambda name: RemoteController(name, ip='192.168.56.101'),
                   listenPort=6633, autoSetMacs=True)
 	
 	info('** Starting the network\n')
@@ -79,7 +79,7 @@ def startNetwork():
                 -- --id=@q0 create queue other-config:max-rate=%d other-config:min-rate=%d \
                 -- --id=@q1 create queue other-config:min-rate=%d \
                 -- --id=@q2 create queue other-config:max-rate=%d' % (switch + '-eth' + str(link[2]['port1']), bw, bw, bw, X, Y))
-				print "QoS on %s" % (switch + ':' + str(link[2]['port1']))
+				print "QoS with speed %d on %s" % (bw, switch + ':' + str(link[2]['port1']))
 					
 			if link[2]["node2"] == switch:
 				bw = bwmap[link[2]["node1"]][link[2]["node2"]]
@@ -92,7 +92,7 @@ def startNetwork():
                 -- --id=@q0 create queue other-config:max-rate=%d other-config:min-rate=%d \
                 -- --id=@q1 create queue other-config:min-rate=%d \
                 -- --id=@q2 create queue other-config:max-rate=%d' % (switch + '-eth' + str(link[2]['port2']), bw, bw, bw, X, Y))
-				print "QOS on %s" % (switch + ':' + str(link[2]['port2']))
+				print "QOS with speed %d on %s " % (bw, switch + ':' + str(link[2]['port2']))
 	print "Total QoS: %d" % nQoS
 
 	info('** Running CLI\n')
