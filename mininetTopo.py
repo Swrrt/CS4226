@@ -1,6 +1,6 @@
 '''
-Please add your name: She Zhaochen
-Please add your matric number: A0174088W 
+Please add your name:
+Please add your matric number: 
 '''
 
 import os
@@ -14,15 +14,35 @@ from mininet.link import Link
 from mininet.node import RemoteController
 
 net = None
+linkbw = []
 
 class TreeTopo(Topo):
 			
-	def __init__(self):
-		# Initialize topology
-		Topo.__init__(self)        	
-	
-	# You can write other functions as you need.
-	
+    def __init__(self):
+        Topo.__init__(self)
+        self.build_topo()
+
+    def build_topo(self):
+        fp = open("topology.in", "r")
+        line = fp.readline()
+        data = line.split(" ")
+        numHost = data[0]
+        numSwitch = data[1]
+        numLink = data[2]
+        for h in range(int(numHost)):
+            self.addHost('h%d' % (h+1))
+
+        for s in range(int(numSwitch)):
+            sconfig = {'dpid': "%016x" % (s+1)}
+            self.addSwitch('s%d' % (s+1), **sconfig)
+
+        for i in range(int(numLink)):
+            linkData = fp.readline().replace("\r","").replace("\n","")
+            param = linkData.split(",")
+            bandwidth = int(param[2])
+            self.addLink(param[0], param[1])
+            linkbw.append((param[0], param[1], bandwidth))
+        
 	# Add hosts
     # > self.addHost('h%d' % [HOST NUMBER])
 
@@ -34,69 +54,74 @@ class TreeTopo(Topo):
 	# > self.addLink([HOST1], [HOST2])
 
 def startNetwork():
-	info('** Creating the tree network\n')
-	filename = "topology.in"
-	ff = open(filename, "r")
-	tinput = ff.readline().split(' ')
-	n, m, l = map(int, tinput)
-	print n,m,l
-	topo = TreeTopo()
-	links = []
-	for i in range(1, n + 1):
-		topo.addHost('h%d' % i)
-	for i in range(1, m + 1):
-		sconfig = {'dpid': "%016x" % i}
-		topo.addSwitch('s%d' % i, **sconfig)
-	bwmap = {}
-	for i in range(1, l + 1):
-		tinput = ff.readline()
-		if tinput[-1] == '\n' : tinput = tinput[:-1]
-		tinput = tinput.split(',')
-		links.append([tinput[0], tinput[1], int(tinput[2])*1000000])
-		if bwmap.get(tinput[0]) == None :bwmap[tinput[0]] = {}
-		bwmap[tinput[0]][tinput[1]] = int(tinput[2]) * 1000000
-		print links[-1]
-		topo.addLink(tinput[0], tinput[1])
-	print links
- 	global net
-	net = Mininet(topo=topo, link = Link,
-                  controller=lambda name: RemoteController(name, ip='192.168.56.101'),
-                  listenPort=6633, autoSetMacs=True)
-	
-	info('** Starting the network\n')
-	net.start()
-	nQoS = 0
-	for link in topo.links(True, False, True):
-		for switch in topo.switches():
-			if link[2]["node1"] == switch:
-				bw = bwmap[link[2]["node1"]][link[2]["node2"]]
-				X = bw * 8 / 10
-				Y = bw * 5 / 10
-				nQoS += 1
-    			# Create QoS Queues
-				os.system('sudo ovs-vsctl -- set Port %s qos=@newqos \
-                -- --id=@newqos create QoS type=linux-htb other-config:max-rate=%d queues=0=@q0,1=@q1,2=@q2 \
-                -- --id=@q0 create queue other-config:max-rate=%d other-config:min-rate=%d \
-                -- --id=@q1 create queue other-config:min-rate=%d \
-                -- --id=@q2 create queue other-config:max-rate=%d' % (switch + '-eth' + str(link[2]['port1']), bw, bw, bw, X, Y))
-				print "QoS with speed %d on %s" % (bw, switch + ':' + str(link[2]['port1']))
-					
-			if link[2]["node2"] == switch:
-				bw = bwmap[link[2]["node1"]][link[2]["node2"]]
-				X = bw * 8 / 10
-				Y = bw * 5 / 10
-				nQoS += 1
-    			# Create QoS Queues
-				os.system('sudo ovs-vsctl -- set Port %s qos=@newqos \
-                -- --id=@newqos create QoS type=linux-htb other-config:max-rate=%d queues=0=@q0,1=@q1,2=@q2 \
-                -- --id=@q0 create queue other-config:max-rate=%d other-config:min-rate=%d \
-                -- --id=@q1 create queue other-config:min-rate=%d \
-                -- --id=@q2 create queue other-config:max-rate=%d' % (switch + '-eth' + str(link[2]['port2']), bw, bw, bw, X, Y))
-				print "QOS with speed %d on %s " % (bw, switch + ':' + str(link[2]['port2']))
-	print "Total QoS: %d" % nQoS
+    info('** Creating the tree network\n')
+    topo = TreeTopo()
 
-	info('** Running CLI\n')
-	CLI(net)
+    global net
+    net = Mininet(topo=topo, link = Link,
+                  controller=lambda name: RemoteController(name, ip='192.168.211.3'),
+                  listenPort=6633, autoSetMacs=True)
+
+    info('** Starting the network\n')
+    net.start()
+
+    links = topo.links(True, False, True)
+    switches = topo.switches()
+
+    for link in links:
+        node1 = link[0]
+        node2 = link[1]
+
+        if bool(node1 in switches) != bool(node2 in switches):
+            curr = [elem for elem in linkbw if node1 in elem and node2 in elem]
+            if node1 in switches:
+                switch = node1
+                switch_port = link[2]['port1']
+            else:
+                switch = node2
+                switch_port = link[2]['port2']
+            bandwidth = curr[0][2] * 1000000
+            os.system('sudo ovs-vsctl -- set Port %s qos=@newqos \
+               -- --id=@newqos create QoS type=linux-htb other-config:max-rate=%d queues=0=@q0,1=@q1,2=@q2 \
+               -- --id=@q0 create queue other-config:max-rate=%d other-config:min-rate=%d \
+               -- --id=@q1 create queue other-config:min-rate=%d \
+               -- --id=@q2 create queue other-config:max-rate=%d' % (switch + "-eth" + str(switch_port), bandwidth ,0.6 * bandwidth,0.3 * bandwidth,0.8 * bandwidth, 0.2 * bandwidth))
+            print("create qos for host", switch + "-eth" + str(switch_port), bandwidth)
+
+        elif node1 in switches and node2 in switches:
+            switch1 = node1
+            switch1_port = link[2]['port1']
+            switch2 = node2
+            switch2_port = link[2]['port2']
+
+            curr = [elem for elem in linkbw if node1 in elem and node2 in elem]
+            bandwidth = curr[0][2] * 1000000
+
+            os.system('sudo ovs-vsctl -- set Port %s qos=@newqos \
+               -- --id=@newqos create QoS type=linux-htb other-config:max-rate=%d queues=0=@q0,1=@q1,2=@q2 \
+               -- --id=@q0 create queue other-config:max-rate=%d other-config:min-rate=%d \
+               -- --id=@q1 create queue other-config:min-rate=%d \
+               -- --id=@q2 create queue other-config:max-rate=%d' % (switch1 + "-eth" + str(switch1_port), bandwidth ,0.6 * bandwidth, 0.3 * bandwidth, 0.8 *bandwidth, 0.2* bandwidth))
+            print("create qos for switch", switch1 + "-eth" + str(switch1_port), bandwidth)
+            os.system('sudo ovs-vsctl -- set Port %s qos=@newqos \
+               -- --id=@newqos create QoS type=linux-htb other-config:max-rate=%d queues=0=@q0,1=@q1,2=@q2 \
+               -- --id=@q0 create queue other-config:max-rate=%d other-config:min-rate=%d \
+               -- --id=@q1 create queue other-config:min-rate=%d \
+               -- --id=@q2 create queue other-config:max-rate=%d' % (switch2 + "-eth" + str(switch2_port), bandwidth ,0.6 * bandwidth, 0.3 * bandwidth, 0.8 * bandwidth, 0.2 * bandwidth))
+            print("create qos for switch", switch2 + "-eth" + str(switch2_port),bandwidth)
+
+
+
+
+    # Create QoS Queues
+    # > os.system('sudo ovs-vsctl -- set Port [INTERFACE] qos=@newqos \
+    #            -- --id=@newqos create QoS type=linux-htb other-config:max-rate=[LINK SPEED] queues=0=@q0,1=@q1,2=@q2 \
+    #            -- --id=@q0 create queue other-config:max-rate=[LINK SPEED] other-config:min-rate=[LINK SPEED] \
+    #            -- --id=@q1 create queue other-config:min-rate=[X] \
+    #            -- --id=@q2 create queue other-config:max-rate=[Y]')
+
+    info('** Running CLI\n')
+    CLI(net)
 
 def stopNetwork():
     if net is not None:
